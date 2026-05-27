@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 using u32 = uint32_t;
+using i32 = int32_t;
 
 #ifdef _WIN32
     #include <windows.h>
@@ -107,6 +108,10 @@ namespace move {
     inline cursor_move right(u32 n) { return {cursor_move_dir::right, n}; }
     inline cursor_move prvline(u32 n) { return {cursor_move_dir::prvline, n}; }
     inline cursor_move nxtline(u32 n) { return {cursor_move_dir::nxtline, n}; }
+    inline cursor_move moveline(i32 n) {
+        if (n > 0) return nxtline(n);
+        else return prvline(-n);
+    }
 }
 
 enum class clear {

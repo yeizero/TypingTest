@@ -8,6 +8,7 @@
 using namespace std;
 
 const int LINES_DISPLAY = 5;
+const int TIME_LINE_GAP = 1;
 const int BREAKLINE_LEN = 80;
 const auto FOCUS_TEXT_COLOR = rang::fgB::magenta;
 const auto WRONG_TEXT_COLOR = rang::fgB::red;
@@ -28,6 +29,11 @@ class Instant {
     Time start;
 public:
     Instant() : start(now()) {}
+    long long elapsed_sec() const {
+        return chrono::duration_cast<chrono::seconds>(
+            now() - start
+        ).count();
+    }
     long long elapsed_ms() const {
         return chrono::duration_cast<chrono::milliseconds>(
             now() - start
@@ -37,20 +43,33 @@ public:
 
 struct ShareInfo {
     mutex mtx;
-    Instant time;
-    int lines_left;
+    const Instant time;
+    int end_offset;
+    ShareInfo(int end_offset) : end_offset(end_offset) {}
 };
 
 void timer_task(ShareInfo& info) {
-  //thread::
-}
+    while(1) {
+        unique_lock<mutex> mtx(info.mtx);
+        if(info.end_offset == 0) {
+            return;
+        }
 
-// int main() {
-//     mutex mtx;
-//     int lines_left = 0;
-//     thread timer_t(timer_task, ref(mtx), ref(lines_left));
-//     timer_t.join();
-// }
+        cout << ter::hide
+             << ter::save_pos
+             << ter::move::moveline(info.end_offset);
+        for(int i=0; i<TIME_LINE_GAP; i++) 
+            cout << '\n';
+        cout << (info.time.elapsed_sec())
+             << ter::clear::until_new_line
+             << ter::restore_pos
+             << ter::show
+             << flush;
+
+        mtx.unlock();
+        this_thread::sleep_for(chrono::seconds(1));
+    }
+}
 
 Utf8String styled_compare(Utf8String& input, Utf8String& ans, int& wrong_cnt) {
     Utf8String str;
@@ -76,6 +95,15 @@ Utf8String styled_compare(Utf8String& input, Utf8String& ans, int& wrong_cnt) {
         wrong_cnt += left;
     }
     return str;
+}
+
+void word_contribute_count(Utf8String& input, Utf8String& ans, int& cnt) {
+    for(int i=0; i<ans.len(); i++) {
+        if (i == input.len()) break;
+        if (input[i] != ans[i]) continue;
+        if (ans[i].bytes_len() == 1) cnt += 1;
+        else cnt += 5;
+    }
 }
 
 int main() {
@@ -107,18 +135,26 @@ int main() {
     }
 
     vector<Utf8String> inputs(lines.size());
+
+    ShareInfo info(LINES_DISPLAY * 2);
+    unique_lock<mutex> mtx(info.mtx, defer_lock);
+
+    thread timer_thread(timer_task, ref(info));
+    
     int typed_cnt = 0;
     int wrong_cnt = 0;
+    int contribute_cnt = 0;
 
     for(int i = 0; i < lines.size(); i++) {
-        int lines_cnt = 0;
+        mtx.lock();
         int line_start = max(0, i - 1);
         bool has_prev = i != line_start;
+        int offset = LINES_DISPLAY * 2 - 3;
+        if (has_prev) offset -= 2;
         cout << ter::hide;
         for(int j = line_start; j < line_start + LINES_DISPLAY; j++) {
             if(j != line_start) {
-                lines_cnt += 2;
-                if (j == i) { // prev input
+                if (j == i) { // old input
                     cout << '\n' 
                          << inputs[j-1] 
                          << ter::clear::until_new_line 
@@ -142,21 +178,39 @@ int main() {
                  << rang::reset 
                  << ter::clear::until_new_line;
         }
-        cout << ter::show;
 
-        if(lines_cnt == 0) cout << ter::move::nxtline(1);
-        else if (has_prev) cout << ter::move::prvline(lines_cnt - 3);
-        else cout << ter::move::prvline(lines_cnt - 1);
- 
+        info.end_offset = offset;
+
+        cout << ter::move::moveline(-offset)
+             << ter::show
+             << flush;
+
+        mtx.unlock();
+
         Utf8String raw_input;
         raw_input.getline(cin);
         typed_cnt += max(raw_input.len(), lines[i].len());
         inputs[i] = styled_compare(raw_input, lines[i], wrong_cnt);
+        word_contribute_count(raw_input, lines[i], contribute_cnt);
 
+        mtx.lock();
         if (i == line_start) cout << ter::move::prvline(2);
         else cout << ter::move::prvline(4);
+        cout << flush;
+        mtx.unlock();
     }
 
+    mtx.lock();
+    info.end_offset = 0;
+    mtx.unlock();
+    
+    int max_time_line = LINES_DISPLAY * 2 - 1 + TIME_LINE_GAP;
+    if (lines.size() * 2 <= max_time_line - 1) {
+        for(int i=0; i<max_time_line; i++) {
+            cout << ter::clear::current_line << '\n';
+        }
+        cout << ter::move::prvline(max_time_line);
+    }
     for(int i=0; i<lines.size(); i++) {
         cout << rang::style::dim
              << lines[i]
@@ -167,8 +221,19 @@ int main() {
              << ter::clear::until_new_line
              << '\n';
     }
+
     cout << "\n[ 成績 ]\n";
-    // cout << "速度";
+
+    int time_usage = info.time.elapsed_sec();
+    cout << "用時: " << time_usage << " 秒\n";
+
+    double mins = info.time.elapsed_ms() / 1000.0 / 60.0;
+    cout << "速度: "
+         << fixed
+         << setprecision(1) 
+         << (contribute_cnt / 5.0 / mins) 
+         << " WPM\n";
+
     double accuracy = (double)(typed_cnt - wrong_cnt) * 100 / typed_cnt;
     cout << "正確率: " 
          << fixed
@@ -177,4 +242,6 @@ int main() {
          << "% (錯 "
          << wrong_cnt
          << " 字)";
+
+    timer_thread.join();
 }

@@ -51,12 +51,15 @@ public:
         Slice operator[] (int i) const {
             return slice(i, i+1);
         }
+        string_view as_view() const {
+            return string_view(
+                str.s.data() + str.seg[s],
+                bytes_len()
+            );
+        }
         
         friend ostream& operator<<(ostream& os, const Slice& slice) {
-            auto& str = slice.str;
-            os.write(str.s.data() + str.seg[slice.s],
-            str.seg[slice.e] - str.seg[slice.s]);
-            return os;
+            return os << slice.as_view();
         }
         
         int bytes_len() const {
@@ -75,16 +78,7 @@ public:
         }
 
         bool operator==(const Slice& other) const { 
-            int size = bytes_len();
-            if(size != other.bytes_len()) return false;
-            int a = str.seg[s];
-            int b = other.str.seg[other.s];
-            for(int i = 0; i < size; i++) {
-                if(str.s[a + i] != other.str.s[b + i]) {
-                    return false;
-                }
-            }
-            return true;
+            return as_view() == other.as_view();
         }
 
         bool operator!=(const Slice& other) const {
@@ -151,7 +145,6 @@ public:
     void pop() {
         seg.pop_back();
         s.erase(seg.back());
-        seg.back() = s.size();
     }
 
     int bytes_len() const {
