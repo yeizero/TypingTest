@@ -3,6 +3,10 @@
 #include <sstream>
 #include <vector>
 #include <string>
+#include <string_view>
+#include <cassert>
+#include <cstdint> 
+
 #define _utf8_impl_concat(t) \
 Utf8String& operator<<(const t x) { \
     push_str(x); \
@@ -14,6 +18,45 @@ Utf8String& operator+=(const t x) { \
 }
 
 using namespace std;
+using u8 = uint8_t;
+using u32 = uint32_t;
+
+namespace utf8util {
+    int expect_len(unsigned char ch) {
+        if (ch < 128) return 1;
+        if ((ch >> 5) == 0b110) return 2;
+        if ((ch >> 4) == 0b1110) return 3;
+        if ((ch >> 3) == 0b11110) return 4;
+        return -1;
+    }
+
+    bool is_ascii_space(char ch) {
+        return ch == ' ' || (ch >= '\x09' && ch <= '\x0d' );
+    }
+
+    inline constexpr u8 WHITESPACE_MAP[256] = {
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0,
+    };
+
+    bool lookup_space(u32 ch) {
+        assert(ch > 127);
+        switch (ch >> 8) {
+            case 0: return (WHITESPACE_MAP[ch & 0xff] & 1) != 0;
+            case 22: return ch == 0x1680;
+            case 32: return (WHITESPACE_MAP[ch & 0xff] & 2) != 0;
+            case 48: return ch == 0x3000;
+            default: return false;
+        };
+    }
+};
 
 class Utf8String {
     string s;
@@ -23,12 +66,9 @@ class Utf8String {
         if(i) seg.pop_back();
         while (i < s.size()) {
             seg.push_back(i);
-            auto ch = (unsigned char)s[i];
-            int len;
-            if (ch >= 0xf0) len = 4;
-            else if (ch >= 0xe0) len = 3;
-            else if (ch >= 0xc0) len = 2;
-            else len = 1;
+            int len = utf8util::expect_len(s[i]);
+            // NOTE: invalid utf8
+            if (len == -1) len = 1;
             i += len;
         }
         seg.push_back(s.size());
@@ -84,6 +124,46 @@ public:
         bool operator!=(const Slice& other) const {
             return !(*this == other);
         } 
+
+        u32 first_as_char() const {
+            auto p = (const unsigned char*)&str.s[str.seg[s]];
+            int len = utf8util::expect_len(*p);
+            if (len == 1) return p[0];
+            // NOTE: invalid utf8
+            if (len == -1) return 0;
+            u32 x = p[0] & (0xFF >> len);
+            for (int i = 1; i < len; ++i) {
+                x = (x << 6) | (p[i] & ((1 << 6) - 1));
+            }
+            return x;
+        }
+
+        bool first_is_whitespace() const {
+            if ((u8)str.s[str.seg[s]] < 128) return utf8util::is_ascii_space(str.s[str.seg[s]]);
+            return utf8util::lookup_space(first_as_char());
+        }
+
+        Slice trim_start() {
+            for(int i=0; i<len(); i++) {
+                if (!(*this)[i].first_is_whitespace()) {
+                    return slice(i, len());
+                }
+            }
+            return Slice(str, 0, 0);
+        }
+
+        Slice trim_end() {
+            for(int i=len()-1; i>=0; i--) {
+                if (!(*this)[i].first_is_whitespace()) {
+                    return slice(0, i + 1);
+                }
+            }
+            return Slice(str, 0, 0);
+        }
+
+        Slice trim() {
+            return trim_start().trim_end();
+        }
     };
 
     class Iter {

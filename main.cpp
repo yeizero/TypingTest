@@ -9,10 +9,10 @@ using namespace std;
 
 const int LINES_DISPLAY = 5;
 const int TIME_LINE_GAP = 1;
-const int BREAKLINE_LEN = 80;
+// const int BREAKLINE_LEN = 80;
 const auto FOCUS_TEXT_COLOR = rang::fgB::magenta;
 const auto WRONG_TEXT_COLOR = rang::fgB::red;
-const int INITIAL_TIME = 60;
+// const int INITIAL_TIME = 60;
 // const auto WRONG_SPACE_COLOR = rang::bg::red;
 
 void init() {
@@ -71,7 +71,7 @@ void timer_task(ShareInfo& info) {
     }
 }
 
-Utf8String styled_compare(Utf8String& input, Utf8String& ans, int& wrong_cnt) {
+Utf8String styled_compare(Utf8String& input, Utf8String::Slice ans, int& wrong_cnt) {
     Utf8String str;
     for(int i=0; i<input.len(); i++) {
         if (i >= ans.len()) {
@@ -97,7 +97,7 @@ Utf8String styled_compare(Utf8String& input, Utf8String& ans, int& wrong_cnt) {
     return str;
 }
 
-void word_contribute_count(Utf8String& input, Utf8String& ans, int& cnt) {
+void word_contribute_count(Utf8String& input, Utf8String::Slice ans, int& cnt) {
     for(int i=0; i<ans.len(); i++) {
         if (i == input.len()) break;
         if (input[i] != ans[i]) continue;
@@ -109,7 +109,8 @@ void word_contribute_count(Utf8String& input, Utf8String& ans, int& cnt) {
 int main() {
     init();
     
-    vector<Utf8String> lines;
+    vector<Utf8String> lines_raw;
+    vector<Utf8String::Slice> lines;
 
     while(1) {
         cout << "輸入檔案位置：";
@@ -117,12 +118,18 @@ int main() {
         getline(cin, path);
         std::ifstream file(path);
         if (file.is_open()) {
-            lines.assign(1, Utf8String());
-            while(lines.back().getline(file)) {
-                if(lines.back().len() == 0) continue;
-                lines.emplace_back();
+            lines_raw.assign(1, Utf8String());
+            while(lines_raw.back().getline(file)) {
+                lines_raw.emplace_back();
             }
-            lines.pop_back();
+            lines_raw.pop_back();
+            
+            for(auto& line : lines_raw) {
+                auto slice = line.as_slice().trim_end();
+                if (slice.len() == 0) continue;
+                lines.push_back(slice);   
+            }
+
             cout<<ter::move::prvline(1);
             break;
         } else {
