@@ -19,6 +19,7 @@ Utf8String& operator+=(const t x) { \
 
 using namespace std;
 using u8 = uint8_t;
+using i8 = int8_t;
 using u32 = uint32_t;
 
 namespace utf8util {
@@ -28,6 +29,42 @@ namespace utf8util {
         if ((ch >> 4) == 0b1110) return 3;
         if ((ch >> 3) == 0b11110) return 4;
         return -1;
+    }
+
+    bool is_cont(i8 ch) {
+        return ch < -64;
+    }
+
+    bool is_valid_utf8(const char* p, const char* end) {
+        while(p != end) {
+            u8 first = *p++;
+            int w = expect_len(first);
+            if (w == 1) continue;
+            if (w == -1) return false;
+
+            if (w == 3) {
+                u8 nxt = *p;
+                if (first == 0xE0 && nxt >= 0xA0 && nxt <= 0xBF) {}
+                else if (first >= 0xE1 && first <= 0xEC && nxt >= 0x80 && nxt <= 0xBF) {}
+                else if (first == 0xED && nxt >= 0x80 && nxt <= 0x9F) {}
+                else if (first >= 0xEE && first <= 0xEF && nxt >= 0x80 && nxt <= 0xBF) {}
+                else return false;
+                p++;
+                w--;
+            } else if (w == 4) {
+                u8 nxt = *p;
+                if (first == 0xF0 && nxt >= 0x90 && nxt <= 0xBF) {}
+                else if (first >= 0xF1 && first <= 0xF3 && nxt >= 0x80 && nxt <= 0xBF) {}
+                else if (first == 0xF4 && nxt >= 0x80 && nxt <= 0x8F) {}
+                else return false;
+                p++;
+                w--;
+            }
+            while (--w) {
+                if (!is_cont(*p++)) return false;
+            }
+        }
+        return true;
     }
 
     bool is_ascii_space(char ch) {
@@ -195,6 +232,10 @@ public:
     Utf8String(string input) : s(move(input)) {
         parse(0);
     }
+
+    static bool is_valid(string_view sv) {
+        return utf8util::is_valid_utf8(sv.data(), sv.data() + sv.size());
+    } 
 
     void push_str(const char* input) {
         int i = s.size();

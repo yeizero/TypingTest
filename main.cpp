@@ -104,25 +104,42 @@ void word_contribute_count(Utf8String& input, Utf8String::Slice ans, int& cnt) {
         if (ans[i].bytes_len() == 1) cnt += 1;
         else cnt += 5;
     }
+    // breakline
+    cnt++;
 }
 
 int main() {
     init();
-    
+
     vector<Utf8String> lines_raw;
     vector<Utf8String::Slice> lines;
 
     while(1) {
+        lines_raw.clear();
+
         cout << "輸入檔案位置：";
         string path;
+        string raw_line;
         getline(cin, path);
         std::ifstream file(path);
         if (file.is_open()) {
-            lines_raw.assign(1, Utf8String());
-            while(lines_raw.back().getline(file)) {
-                lines_raw.emplace_back();
+            bool fail = false;
+            while(getline(file, raw_line)) {
+                if (!Utf8String::is_valid(raw_line)) {
+                    fail = true;
+                    break;
+                }
+                lines_raw.emplace_back(raw_line);
             }
-            lines_raw.pop_back();
+            if (fail) {
+                cout << rang::fg::red 
+                    << "檔案無法開啟，只支援UTF8編碼。" 
+                    << rang::reset 
+                    << ter::clear::until_new_line
+                    << ter::move::prvline(1) 
+                    << ter::clear::current_line;
+                continue;
+            }
             
             for(auto& line : lines_raw) {
                 auto slice = line.as_slice().trim_end();
@@ -136,6 +153,7 @@ int main() {
             cout << rang::fg::red 
                  << "檔案無法開啟，請重試。" 
                  << rang::reset 
+                 << ter::clear::until_new_line
                  << ter::move::prvline(1) 
                  << ter::clear::current_line;
         }
