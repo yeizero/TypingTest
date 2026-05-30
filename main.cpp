@@ -12,8 +12,7 @@ const int TIME_LINE_GAP = 1;
 // const int BREAKLINE_LEN = 80;
 const auto FOCUS_TEXT_COLOR = rang::fgB::magenta;
 const auto WRONG_TEXT_COLOR = rang::fgB::red;
-// const int INITIAL_TIME = 60;
-// const auto WRONG_SPACE_COLOR = rang::bg::red;
+const auto WRONG_SPACE_COLOR = rang::bg::red;
 
 void init() {
 #ifdef _WIN32
@@ -74,19 +73,18 @@ void timer_task(ShareInfo& info) {
 Utf8String styled_compare(Utf8String& input, Utf8String::Slice ans, int& wrong_cnt) {
     Utf8String str;
     for(int i=0; i<input.len(); i++) {
-        if (i >= ans.len()) {
-            wrong_cnt += input.len() - ans.len();
-            str << WRONG_TEXT_COLOR 
-                << input.slice(i, input.len()) 
-                << rang::reset;
-            break;
-        }
-        if (input[i] != ans[i]) {
+        bool wrong = i >= ans.len() || input[i] != ans[i];
+        if (wrong) {
             wrong_cnt++;
-            str << WRONG_TEXT_COLOR;
+  
+            if (input[i].first_is_whitespace()) {
+                str << WRONG_SPACE_COLOR;
+            } else {
+                str << WRONG_TEXT_COLOR;
+            }
         }
         str << input[i];
-        if (input[i] != ans[i]) {
+        if (wrong) {
             str << rang::reset;
         }
     }
